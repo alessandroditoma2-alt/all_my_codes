@@ -1,0 +1,33 @@
+# R files
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+
+# Output files
+output/
+dati/
+*.html
+*.pdf
+*.png
+*.csv
+*.xlsx
+*.rds
+
+# Temporary files
+*.log
+*.aux
+*.out
+*.tmp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# RStudio files
+.Rproj.user/
+
+# Keep directory structure but ignore contents
+!output/.gitkeep
+!dati/.gitkeep
