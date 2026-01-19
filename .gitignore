@@ -1,0 +1,39 @@
+# Script R per Tesi di Master - Dati ISTAT R&D
+# Output generati automaticamente
+
+# Directory di output
+data/
+output/
+plots/
+*.csv
+*.png
+*.pdf
+*.html
+*.doc
+*.docx
+
+# Log e file temporanei
+*.log
+*.tmp
+.Rhistory
+.Ruserdata
+
+# File di sistema
+.DS_Store
+Thumbs.db
+
+# R specifico
+.Rbuildignore
+.Renviron
+.Rprofile
+
+# Backup
+*.bak
+*~
+
+# Package specifico
+.Rinstignore
+
+# HTML widgets
+*_files/
+*_cache/
