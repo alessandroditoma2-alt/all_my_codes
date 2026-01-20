@@ -1,0 +1,11 @@
+library(ggplot2)
+library(eurostat)
+
+prova <- search_eurostat("population", type="table")
+pippo <- get_eurostat("tps00028", filter = list(geo = "IT"))
+pippo %>% select(time, values) %>% ggplot(aes(x = time, y = values)) +
+  geom_line()+
+  geom_smooth()
+
+#Seleziono tutti i dataset Eurostat
+toc <- get_eurostat_toc()
