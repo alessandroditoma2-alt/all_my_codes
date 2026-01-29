@@ -1,9 +1,35 @@
 #libraries
 library(readxl)
 library(tidyverse)
+library(janitor)
 
 #import from excel
 dati_1718 <- read_excel("~/Downloads/did_18_17.xlsx")
 dati_1920 <- read_excel("~/Downloads/did_20_19.xlsx")
 dati_2122 <- read_excel("~/Downloads/Did_22_21.xlsx")
 dati_2324 <- read_excel("~/Downloads/Did_24_23.xlsx")
+
+head(dati_1718)
+head(dati_1920)
+head(dati_2122)
+head(dati_2324)
+
+names(dati_1718)
+names(dati_1920)
+names(dati_2122)
+names(dati_2324)
+
+dati_1718 <- dati_1718 %>% clean_names()
+dati_1920 <- dati_1920 %>% clean_names()
+dati_2122 <- dati_2122 %>% clean_names()
+dati_2324 <- dati_2324 %>% clean_names()
+
+
+names(dati_1718)
+
+dati_aida <- dati_1718 %>%
+  inner_join(dati_1920, by = "x1", suffix = c("_1718", "_1920")) %>%
+  inner_join(dati_2122, by = "x1", suffix = c("_1718", "_2122")) %>%
+  inner_join(dati_2324, by = "x1", suffix = c("_1718", "_2324"))
+
+names(dati_aida)
