@@ -1,1 +1,9 @@
+#libraries
+library(readxl)
+library(tidyverse)
 
+#import from excel
+dati_1718 <- read_excel("~/Downloads/did_18_17.xlsx")
+dati_1920 <- read_excel("~/Downloads/did_20_19.xlsx")
+dati_2122 <- read_excel("~/Downloads/Did_22_21.xlsx")
+dati_2324 <- read_excel("~/Downloads/Did_24_23.xlsx")
