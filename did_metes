@@ -2,6 +2,10 @@
 library(readxl)
 library(tidyverse)
 library(janitor)
+library(sandwich)
+library(lmtest)
+library(fixest)
+library(ggplot2)
 
 #import from excel
 dati_1718 <- read_excel("~/Downloads/did_18_17.xlsx")
@@ -9,6 +13,7 @@ dati_1920 <- read_excel("~/Downloads/did_20_19.xlsx")
 dati_2122 <- read_excel("~/Downloads/Did_22_21.xlsx")
 dati_2324 <- read_excel("~/Downloads/Did_24_23.xlsx")
 
+#data cleaning
 head(dati_1718)
 head(dati_1920)
 head(dati_2122)
@@ -32,4 +37,168 @@ dati_aida <- dati_1718 %>%
   inner_join(dati_2122, by = "x1", suffix = c("_1718", "_2122")) %>%
   inner_join(dati_2324, by = "x1", suffix = c("_1718", "_2324"))
 
+dati_aida <- dati_aida %>%
+  rename(chiusura_bilancio = chiusura_bilancio_ultimo_anno_disp_1718,
+         provincia = provincia_1718,
+         ateco_2007 = ateco_2007_codice_1718)
+  
+
 names(dati_aida)
+nrow(dati_aida)
+ncol(dati_aida)
+nrow(dati_long)
+ncol(dati_long)
+summary(dati_aida)
+dati_aida %>%
+  get_dupes(x1)
+
+dati_aida %>%
+  count(x1) %>%
+  filter(n > 1) 
+
+#wide to long data
+dati_long <- dati_aida %>%
+  pivot_longer(
+    cols = -c(x1, ragione_sociale, sede_operativa_regione, provincia, ateco_2007),
+    names_to = c(".value", "anno"),
+    names_pattern = "(.+)_(\\d{4})"
+  )
+
+dati_long <- dati_long %>%
+  filter(!is.na(anno))
+
+#Variables
+dati_long <- dati_long %>%
+  mutate(
+    produttività = valore_aggiunto_eur / dipendenti,
+    salari_per_dipendente = salari_e_stipendi_eur / dipendenti,
+    ricavi_per_dipendente = ricavi_delle_vendite_eur / dipendenti,
+    costi_personale_per_dipendente = totale_costi_del_personale_eur / dipendenti
+  )
+
+# PRIMO DiD: ATECO 10+11 vs CONTROLLO
+dati_did1 <- dati_long %>%
+  mutate(
+    treatment = ifelse(ateco_2cifre %in% c("10", "11"), 1, 0),
+    post = ifelse(anno >= 2022, 1, 0)
+  ) %>%
+  filter(ateco_2cifre %in% c("10", "11", "13", "14", "15", "16", "17", "18", "22", "25"))
+
+# Model con fixed effects
+model1_salari <- feols(salari_per_dipendente ~ treatment * post | anno + x1, 
+                       data = dati_did1)
+
+
+model1_prod <- feols(produttività ~ treatment * post | anno + x1, 
+                     data = dati_did1)
+
+model1_dipendenti <- feols(log(dipendenti) ~ treatment * post | anno + x1, 
+                           data = dati_did1)
+
+# Visualizza
+summary(model1_salari)
+summary(model1_prod)
+summary(model1_dipendenti)
+
+#Parallel trends
+# Calcola media per year e treatment
+dati_did1_clean <- dati_did1 %>%
+  filter(is.finite(salari_per_dipendente),
+         is.finite(produttività),
+         is.finite(dipendenti))
+
+# Ora trend_data
+model1_salari <- feols(salari_per_dipendente ~ treatment * post | anno + x1, 
+                       data = dati_did1_clean)
+model1_prod <- feols(produttività ~ treatment * post | anno + x1, 
+                     data = dati_did1_clean)
+
+model1_dipendenti <- feols(log(dipendenti) ~ treatment * post | anno + x1, 
+                           data = dati_did1_clean)
+
+summary(model1_salari)
+summary(model1_prod)
+summary(model1_dipendenti)
+
+#Salari
+trend_data <- dati_did1_clean %>%
+  group_by(anno, treatment) %>%
+  summarise(salari_medio = mean(salari_per_dipendente, na.rm = TRUE),
+            .groups = "drop")
+
+trend_data <- trend_data %>%
+  mutate(anno = as.numeric(anno))
+
+ggplot(trend_data, aes(x = anno, y = salari_medio, color = factor(treatment))) +
+  geom_line(linewidth = 1) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red") +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +  # Mostra tutti gli anni
+  labs(title = "Trend Salari: Test Parallel Trends",
+       x = "Anno", y = "Salari per dipendente",
+       color = "Treatment (1=Agroalimentare)") +
+  theme_minimal()
+
+#Event study
+model_dynamic_salari <- feols(salari_per_dipendente ~ i(anno, treatment, ref = 2021) | anno + x1, 
+                              data = dati_did1_clean)
+
+summary(model_dynamic_salari)
+
+# Escludi 2020 dal dataset
+dati_did1_no2020 <- dati_did1_clean %>% filter(anno != 2020)
+
+model_dynamic_no2020 <- feols(salari_per_dipendente ~ i(anno, treatment, ref = 2021) | anno + x1, 
+                              data = dati_did1_no2020)
+
+summary(model_dynamic_no2020)
+
+# Placebo test con data fittizia 2019
+dati_placebo <- dati_did1_clean %>%
+  mutate(
+    post_placebo = ifelse(anno >= 2019, 1, 0)
+  )
+
+model_placebo <- feols(salari_per_dipendente ~ treatment * post_placebo | anno + x1, 
+                       data = dati_placebo)
+
+summary(model_placebo)
+
+# Dipendenti
+# Crea trend_data_dip
+trend_data_dip <- dati_did1_clean %>%
+  group_by(anno, treatment) %>%
+  summarise(
+    dip_medio = mean(dipendenti, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(anno = as.numeric(anno))
+
+# Verifica i dati
+head(trend_data_dip)
+
+# Grafico
+ggplot(trend_data_dip, aes(x = anno, y = dip_medio, color = factor(treatment))) +
+  geom_line(linewidth = 1) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(title = "Trend Occupazione (Dipendenti): Test Parallel Trends",
+       x = "Anno", y = "Dipendenti medi",
+       color = "Treatment (1=Agroalimentare, 0=Altri settori)") +
+  theme_minimal()
+
+#test dinamico
+model_dynamic_dip <- feols(log(dipendenti) ~ i(anno, treatment, ref = 2021) | anno + x1, 
+                           data = dati_did1_clean)
+
+summary(model_dynamic_dip)
+
+#placebo
+dati_placebo_dip <- dati_did1_clean %>%
+  mutate(post_placebo = ifelse(anno >= 2019, 1, 0))
+
+model_placebo_dip <- feols(log(dipendenti) ~ treatment * post_placebo | anno + x1, 
+                           data = dati_placebo_dip)
+
+summary(model_placebo_dip)
