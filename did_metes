@@ -6,6 +6,8 @@ library(sandwich)
 library(lmtest)
 library(fixest)
 library(ggplot2)
+library(skimr)
+library(broom)
 
 #import from excel
 dati_1718 <- read_excel("~/Downloads/did_18_17.xlsx")
@@ -41,6 +43,16 @@ dati_aida <- dati_aida %>%
   rename(chiusura_bilancio = chiusura_bilancio_ultimo_anno_disp_1718,
          provincia = provincia_1718,
          ateco_2007 = ateco_2007_codice_1718)
+dati_aida <- dati_aida %>%
+  rename(ragione_sociale = ragione_sociale_1718)
+
+dati_aida <- dati_aida %>%
+  select(-ragione_sociale_1920, -chiusura_bilancio_ultimo_anno_disp_1920,
+         -sede_operativa_regione_regione_1718, -provincia_1920,-ragione_sociale_1718_1718,
+         -chiusura_bilancio_ultimo_anno_disp_1718_1718, -sede_operativa_regione_regione_2122, -provincia_1718_1718,
+         -ateco_2007_codice_1718_1718,-ateco_2007_codice_1920, -ragione_sociale_2324, 
+         -chiusura_bilancio_ultimo_anno_disp_2324, -sede_operativa_regione_regione,
+         -provincia_2324, -ateco_2007_codice_2324)
   
 
 names(dati_aida)
@@ -76,29 +88,59 @@ dati_long <- dati_long %>%
     costi_personale_per_dipendente = totale_costi_del_personale_eur / dipendenti
   )
 
-# PRIMO DiD: ATECO 10+11 vs CONTROLLO
-dati_did1 <- dati_long %>%
+dati_long <- dati_long %>%
   mutate(
-    treatment = ifelse(ateco_2cifre %in% c("10", "11"), 1, 0),
+    ateco_2_cifre = str_sub(ateco_2007, 1, 2),
+    ateco_4cifre = str_sub(ateco_2007, 1, 4)
+  )
+dati_long_clean <- dati_long %>%
+  filter(dipendenti > 0,
+         salari_e_stipendi_eur > 0,
+         valore_aggiunto_eur > 0)
+
+# PRIMO DiD: ATECO 10+11 vs CONTROLLO
+dati_did1 <- dati_long_clean %>%
+  mutate(
+    treatment = ifelse(ateco_2_cifre %in% c("10", "11"), 1, 0),
     post = ifelse(anno >= 2022, 1, 0)
   ) %>%
-  filter(ateco_2cifre %in% c("10", "11", "13", "14", "15", "16", "17", "18", "22", "25"))
+  filter(ateco_2_cifre %in% c("10", "11", "13", "14", "15", "16", "17", "18", "22", "25"))
 
 # Model con fixed effects
 model1_salari <- feols(salari_per_dipendente ~ treatment * post | anno + x1, 
                        data = dati_did1)
-
+summary(model1_salari)
 
 model1_prod <- feols(produttività ~ treatment * post | anno + x1, 
                      data = dati_did1)
+summary(model1_prod)
 
 model1_dipendenti <- feols(log(dipendenti) ~ treatment * post | anno + x1, 
                            data = dati_did1)
-
-# Visualizza
-summary(model1_salari)
-summary(model1_prod)
 summary(model1_dipendenti)
+
+#Tabella
+etable(model1_salari, model1_prod, model1_dipendenti)
+
+risultati_salari <- tidy(model1_salari) %>% filter(term == "treatment:post")
+risultati_prod <- tidy(model1_prod) %>% filter(term == "treatment:post")
+risultati_dip <- tidy(model1_dipendenti) %>% filter(term == "treatment:post")
+
+glance_salari <- glance(model1_salari)
+glance_prod <- glance(model1_prod)
+glance_dip <- glance(model1_dipendenti)
+
+tab_risultati <- data.frame(
+  Modello = c("Salari per dipendente", "Produttività", "Log(dipendenti)"),
+  Coefficiente = c(risultati_salari$estimate, risultati_prod$estimate, risultati_dip$estimate),
+  Std_Error = c(risultati_salari$std.error, risultati_prod$std.error, risultati_dip$std.error),
+  T_value = c(risultati_salari$statistic, risultati_prod$statistic, risultati_dip$statistic),
+  P_value = c(risultati_salari$p.value, risultati_prod$p.value, risultati_dip$p.value),
+  R2_Adj = c(glance_salari$adj.r.squared, glance_prod$adj.r.squared, glance_dip$adj.r.squared)
+)
+
+tab_risultati
+write.csv(tab_risultati, "~/Desktop/risultati_did.csv", row.names = FALSE)
 
 #Parallel trends
 # Calcola media per year e treatment
@@ -110,14 +152,14 @@ dati_did1_clean <- dati_did1 %>%
 # Ora trend_data
 model1_salari <- feols(salari_per_dipendente ~ treatment * post | anno + x1, 
                        data = dati_did1_clean)
+summary(model1_salari)
+
 model1_prod <- feols(produttività ~ treatment * post | anno + x1, 
                      data = dati_did1_clean)
+summary(model1_prod)
 
 model1_dipendenti <- feols(log(dipendenti) ~ treatment * post | anno + x1, 
                            data = dati_did1_clean)
-
-summary(model1_salari)
-summary(model1_prod)
 summary(model1_dipendenti)
 
 #Salari
@@ -144,7 +186,7 @@ model_dynamic_salari <- feols(salari_per_dipendente ~ i(anno, treatment, ref = 2
                               data = dati_did1_clean)
 
 summary(model_dynamic_salari)
-
+etable(model_dynamic_salari, file = "~/Desktop/event_study_sal.csv")
 # Escludi 2020 dal dataset
 dati_did1_no2020 <- dati_did1_clean %>% filter(anno != 2020)
 
@@ -202,3 +244,216 @@ model_placebo_dip <- feols(log(dipendenti) ~ treatment * post_placebo | anno + x
                            data = dati_placebo_dip)
 
 summary(model_placebo_dip)
+
+dati_long %>%
+  filter(salari_e_stipendi_eur == 0)
+
+# Quando salari = 0, quanti hanno dipendenti = 0?
+dati_long %>%
+  filter(salari_e_stipendi_eur == 0) %>%
+  summarise(
+    totale_righe = n(),
+    con_dip_zero = sum(dipendenti == 0, na.rm = TRUE),
+    con_dip_na = sum(is.na(dipendenti)),
+    percentuale_dip_zero = round(sum(dipendenti == 0, na.rm = TRUE) / n() * 100, 2)
+  )
+
+#########################################################################
+#DID micro
+dati_did_micro <- dati_long_clean %>%
+  filter(ateco_4cifre %in% c("1020", "1102", "1061", "1073")) %>%  # Solo questi 4 ATECO
+  mutate(
+    treatment_micro = ifelse(ateco_4cifre %in% c("1061", "1073"), 1, 0),  # 1 = cereali/pasta, 0 = pesce/vini
+    post = ifelse(anno >= 2022, 1, 0)
+  )
+
+table(dati_did_micro$ateco_4cifre)
+table(dati_did_micro$treatment_micro)
+
+model_micro_salari <- feols(salari_per_dipendente ~ treatment_micro * post | anno + x1, 
+                            data = dati_did_micro)
+summary(model_micro_salari)
+
+model_micro_prod <- feols(produttività ~ treatment_micro * post | anno + x1, 
+                          data = dati_did_micro)
+summary(model_micro_prod)
+
+model_micro_dipendenti <- feols(log(dipendenti) ~ treatment_micro * post | anno + x1, 
+                                data = dati_did_micro)
+summary(model_micro_dipendenti)
+
+#Event study
+# Dinamico SALARI
+model_dynamic_micro_salari <- feols(salari_per_dipendente ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                    data = dati_did_micro)
+summary(model_dynamic_micro_salari)
+# Dinamico PRODUTTIVITÀ
+model_dynamic_micro_prod <- feols(produttività ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                  data = dati_did_micro)
+summary(model_dynamic_micro_prod)
+
+# Dinamico DIPENDENTI
+model_dynamic_micro_dip <- feols(log(dipendenti) ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                 data = dati_did_micro)
+summary(model_dynamic_micro_dip)
+
+
+# Placebo con data fittizia 2019
+dati_placebo_micro <- dati_did_micro %>%
+  mutate(post_placebo = ifelse(anno >= 2019, 1, 0))
+
+model_placebo_micro_salari <- feols(salari_per_dipendente ~ treatment_micro * post_placebo | anno + x1, 
+                                    data = dati_placebo_micro)
+summary(model_placebo_micro_salari)
+
+model_placebo_micro_prod <- feols(produttività ~ treatment_micro * post_placebo | anno + x1, 
+                                  data = dati_placebo_micro)
+summary(model_placebo_micro_prod)
+
+model_placebo_micro_dip <- feols(log(dipendenti) ~ treatment_micro * post_placebo | anno + x1, 
+                                 data = dati_placebo_micro)
+summary(model_placebo_micro_dip)
+
+#Grafici
+# Crea trend_data_micro
+trend_data_micro <- dati_did_micro %>%
+  group_by(anno, treatment_micro) %>%
+  summarise(
+    salari_medio = mean(salari_per_dipendente, na.rm = TRUE),
+    prod_media = mean(produttività, na.rm = TRUE),
+    dip_medio = mean(dipendenti, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(anno = as.numeric(anno),
+         treatment_label = ifelse(treatment_micro == 1, "Cereali/Pasta (G. trattato)", "Pesce/Vini (G. di controllo)"))
+
+# GRAFICO SALARI
+ggplot(trend_data_micro, aes(x = anno, y = salari_medio, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+       x = "Anno", y = "Salari per dipendente (migl. EUR)",
+       color = "Gruppo", linetype = "Gruppo",
+       subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# GRAFICO PRODUTTIVITÀ
+ggplot(trend_data_micro, aes(x = anno, y = prod_media, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+       x = "Anno", y = "Produttività (VA/Dipendenti)",
+       color = "Gruppo", linetype = "Gruppo",
+       subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# GRAFICO DIPENDENTI
+ggplot(trend_data_micro, aes(x = anno, y = dip_medio, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+       x = "Anno", y = "Dipendenti",
+       color = "Gruppo", linetype = "Gruppo",
+       subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+### did per ricavi e EBITDA
+model_micro_ricavi <- feols(ricavi_delle_vendite_eur ~ treatment_micro * post | anno + x1, 
+                            data = dati_did_micro)
+summary(model_micro_ricavi)
+
+model_micro_ebitda <- feols(ebitda_eur ~ treatment_micro * post | anno + x1, 
+                            data = dati_did_micro)
+summary(model_micro_ebitda)
+# RICAVI PER DIPENDENTE (
+model_micro_ricavi_per_dip <- feols(ricavi_per_dipendente ~ treatment_micro * post | anno + x1, 
+                                    data = dati_did_micro)
+summary(model_micro_ricavi_per_dip)
+# COSTI PERSONALE TOTALI
+model_micro_costi_pers <- feols(totale_costi_del_personale_eur ~ treatment_micro * post | anno + x1, 
+                                data = dati_did_micro)
+summary(model_micro_costi_pers)
+
+#grafici
+trend_data_micro2 <- dati_did_micro %>%
+  group_by(anno, treatment_micro) %>%
+  summarise(
+    ebitda_medio = mean(ebitda_eur, na.rm = TRUE),
+    ricavi_medi = mean(ricavi_per_dipendente, na.rm = TRUE),
+    costi_personale__medio = mean(totale_costi_del_personale_eur, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(anno = as.numeric(anno),
+         treatment_label = ifelse(treatment_micro == 1, "Cereali/Pasta (G. trattato)", "Pesce/Vini (G. di controllo)"))
+
+#graph ebitda
+ggplot(trend_data_micro2, aes(x = anno, y = ebitda_medio, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    x = "Anno", y = "EBITDA",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+#graph income
+ggplot(trend_data_micro2, aes(x = anno, y = ricavi_medi, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    x = "Anno", y = "ricavi medi",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+#graph labour cost
+ggplot(trend_data_micro2, aes(x = anno, y = costi_personale__medio, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    x = "Anno", y = "Costi medi del personale",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+#######################################################################
+# did con aggiunta del settore dei biscotti e prodotti secchi nel g. trattato
+# DID micro – trattato esteso (+10.72)
+dati_did_microp <- dati_long_clean %>%
+  filter(ateco_4cifre %in% c("1020", "1102", "1061", "1073" , "1072")) %>%
+  mutate(
+    treatment_micro = ifelse(ateco_4cifre %in% c("1061", "1073" , "1072"), 1, 0),  # 1 = cereali/pasta/biscotti, 0 = pesce/vini
+    post = ifelse(anno >= 2022, 1, 0)
+  )
+
+table(dati_did_microp$ateco_4cifre)
+table(dati_did_microp$treatment_micro)
+
+model_micro_salari2 <- feols(salari_per_dipendente ~ treatment_micro * post | anno + x1, 
+                            data = dati_did_microp)
+summary(model_micro_salari2)
+
+model_micro_prod2 <- feols(produttività ~ treatment_micro * post | anno + x1, 
+                          data = dati_did_microp)
+summary(model_micro_prod2)
+
+model_micro_dipendenti2 <- feols(log(dipendenti) ~ treatment_micro * post | anno + x1, 
+                                data = dati_did_microp)
+summary(model_micro_dipendenti2)
