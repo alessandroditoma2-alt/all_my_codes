@@ -457,3 +457,35 @@ summary(model_micro_prod2)
 model_micro_dipendenti2 <- feols(log(dipendenti) ~ treatment_micro * post | anno + x1, 
                                 data = dati_did_microp)
 summary(model_micro_dipendenti2)
+
+#Event study
+# Dinamico SALARI
+model_dynamic_micro_salari2 <- feols(salari_per_dipendente ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                    data = dati_did_microp)
+summary(model_dynamic_micro_salari)
+# Dinamico PRODUTTIVITÀ
+model_dynamic_micro_prod2 <- feols(produttività ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                  data = dati_did_microp)
+summary(model_dynamic_micro_prod)
+
+# Dinamico DIPENDENTI
+model_dynamic_micro_dip2 <- feols(log(dipendenti) ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                 data = dati_did_microp)
+summary(model_dynamic_micro_dip)
+
+
+# Placebo con data fittizia 2019
+dati_placebo_micro2 <- dati_did_microp %>%
+  mutate(post_placebo = ifelse(anno >= 2019, 1, 0))
+
+model_placebo_micro_salari2 <- feols(salari_per_dipendente ~ treatment_micro * post_placebo | anno + x1, 
+                                    data = dati_placebo_micro2)
+summary(model_placebo_micro_salari2)
+
+model_placebo_micro_prod2 <- feols(produttività ~ treatment_micro * post_placebo | anno + x1, 
+                                  data = dati_placebo_micro2)
+summary(model_placebo_micro_prod2)
+
+model_placebo_micro_dip2 <- feols(log(dipendenti) ~ treatment_micro * post_placebo | anno + x1, 
+                                 data = dati_placebo_micro2)
+summary(model_placebo_micro_dip2)
