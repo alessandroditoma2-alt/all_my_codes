@@ -8,6 +8,8 @@ library(fixest)
 library(ggplot2)
 library(skimr)
 library(broom)
+library(stargazer)
+library(modelsummary)
 
 #import from excel
 dati_1718 <- read_excel("~/Downloads/did_18_17.xlsx")
@@ -98,6 +100,7 @@ dati_long_clean <- dati_long %>%
          salari_e_stipendi_eur > 0,
          valore_aggiunto_eur > 0)
 
+#####################################################################
 # PRIMO DiD: ATECO 10+11 vs CONTROLLO
 dati_did1 <- dati_long_clean %>%
   mutate(
@@ -119,29 +122,6 @@ model1_dipendenti <- feols(log(dipendenti) ~ treatment * post | anno + x1,
                            data = dati_did1)
 summary(model1_dipendenti)
 
-#Tabella
-etable(model1_salari, model1_prod, model1_dipendenti)
-
-risultati_salari <- tidy(model1_salari) %>% filter(term == "treatment:post")
-risultati_prod <- tidy(model1_prod) %>% filter(term == "treatment:post")
-risultati_dip <- tidy(model1_dipendenti) %>% filter(term == "treatment:post")
-
-glance_salari <- glance(model1_salari)
-glance_prod <- glance(model1_prod)
-glance_dip <- glance(model1_dipendenti)
-
-tab_risultati <- data.frame(
-  Modello = c("Salari per dipendente", "Produttività", "Log(dipendenti)"),
-  Coefficiente = c(risultati_salari$estimate, risultati_prod$estimate, risultati_dip$estimate),
-  Std_Error = c(risultati_salari$std.error, risultati_prod$std.error, risultati_dip$std.error),
-  T_value = c(risultati_salari$statistic, risultati_prod$statistic, risultati_dip$statistic),
-  P_value = c(risultati_salari$p.value, risultati_prod$p.value, risultati_dip$p.value),
-  R2_Adj = c(glance_salari$adj.r.squared, glance_prod$adj.r.squared, glance_dip$adj.r.squared)
-)
-
-tab_risultati
-write.csv(tab_risultati, "~/Desktop/risultati_did.csv", row.names = FALSE)
-
 #Parallel trends
 # Calcola media per year e treatment
 dati_did1_clean <- dati_did1 %>%
@@ -149,19 +129,21 @@ dati_did1_clean <- dati_did1 %>%
          is.finite(produttività),
          is.finite(dipendenti))
 
-# Ora trend_data
+# trend_data
 model1_salari <- feols(salari_per_dipendente ~ treatment * post | anno + x1, 
                        data = dati_did1_clean)
 summary(model1_salari)
+write.csv(broom::tidy(model1_salari), "~/Desktop/model1_salari.csv", row.names = FALSE)
 
 model1_prod <- feols(produttività ~ treatment * post | anno + x1, 
                      data = dati_did1_clean)
 summary(model1_prod)
+write.csv(broom::tidy(model_placebo_salari), "~/Desktop/model_micro_salari.csv", row.names = FALSE)
 
 model1_dipendenti <- feols(log(dipendenti) ~ treatment * post | anno + x1, 
                            data = dati_did1_clean)
 summary(model1_dipendenti)
-
+write.csv(broom::tidy(model_placebo_salari), "~/Desktop/model_micro_salari.csv", row.names = FALSE)
 #Salari
 trend_data <- dati_did1_clean %>%
   group_by(anno, treatment) %>%
@@ -181,12 +163,60 @@ ggplot(trend_data, aes(x = anno, y = salari_medio, color = factor(treatment))) +
        color = "Treatment (1=Agroalimentare)") +
   theme_minimal()
 
+#produttività
+trend_data2 <- dati_did1_clean %>%
+  group_by(anno, treatment) %>%
+  summarise(produttività = mean(produttività, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(anno = as.numeric(anno))
+
+trend_data2 <- trend_data2 %>%
+  mutate(anno = as.numeric(anno))
+ggplot(trend_data2, aes(x = anno, y = produttività, color = factor(treatment))) +
+  geom_line(linewidth = 1) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red") +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(title = "Produttività: Test Parallel Trends",
+       x = "Anno", y = "Produttività",
+       color = "Treatment (1=Agroalimentare)") +
+  theme_minimal()
+#dipendenti
+trend_data1 <- dati_did1_clean %>%
+  group_by(anno, treatment) %>%
+  summarise(dipendenti_medi = mean(dipendenti, na.rm = TRUE),
+            .groups = "drop")
+
+trend_data1 <- trend_data1 %>%
+  mutate(anno = as.numeric(anno))
+
+ggplot(trend_data1, aes(x = anno, y = dipendenti_medi, color = factor(treatment))) +
+  geom_line(linewidth = 1) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red") +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +  # Mostra tutti gli anni
+  labs(title = "Trend : Parallel Trends dipendenti medi",
+       x = "Anno", y = "Dipendenti",
+       color = "Treatment (1=Agroalimentare)") +
+  theme_minimal()
 #Event study
 model_dynamic_salari <- feols(salari_per_dipendente ~ i(anno, treatment, ref = 2021) | anno + x1, 
                               data = dati_did1_clean)
 
 summary(model_dynamic_salari)
-etable(model_dynamic_salari, file = "~/Desktop/event_study_sal.csv")
+write.csv(broom::tidy(model_dynamic_salari), "~/Desktop/model_dynamic_salari.csv", row.names = FALSE)
+
+model_dynamic_produttività <- feols(produttività ~ i(anno, treatment, ref = 2021) | anno + x1, 
+                              data = dati_did1_clean)
+
+summary(model_dynamic_produttività)
+write.csv(broom::tidy(model_dynamic_produttività), "~/Desktop/model_dynamic_produttività.csv", row.names = FALSE)
+
+model_dynamic_dipendenti <- feols(dipendenti ~ i(anno, treatment, ref = 2021) | anno + x1, 
+                              data = dati_did1_clean)
+
+summary(model_dynamic_dipendenti)
+write.csv(broom::tidy(model_dynamic_dipendenti), "~/Desktop/model_dynamic_dipendenti.csv", row.names = FALSE)
+
 # Escludi 2020 dal dataset
 dati_did1_no2020 <- dati_did1_clean %>% filter(anno != 2020)
 
@@ -201,11 +231,20 @@ dati_placebo <- dati_did1_clean %>%
     post_placebo = ifelse(anno >= 2019, 1, 0)
   )
 
-model_placebo <- feols(salari_per_dipendente ~ treatment * post_placebo | anno + x1, 
+model_placebo_salari <- feols(salari_per_dipendente ~ treatment * post_placebo | anno + x1, 
                        data = dati_placebo)
+model_placebo_produttività <- feols(produttività ~ treatment * post_placebo | anno + x1, 
+                              data = dati_placebo)
+model_placebo_dipendenti <- feols(dipendenti ~ treatment * post_placebo | anno + x1, 
+                              data = dati_placebo)
 
-summary(model_placebo)
+summary(model_placebo_salari)
+summary(model_placebo_produttività)
+summary(model_placebo_dipendenti) 
 
+write.csv(broom::tidy(model_placebo_salari), "~/Desktop/model_micro_salari.csv", row.names = FALSE)
+write.csv(broom::tidy(model_placebo_produttività), "~/Desktop/model_placebo_produttività.csv", row.names = FALSE)
+write.csv(broom::tidy(model_placebo_dipendenti), "~/Desktop/model_placebo_dipendenti.csv", row.names = FALSE)
 # Dipendenti
 # Crea trend_data_dip
 trend_data_dip <- dati_did1_clean %>%
@@ -282,21 +321,27 @@ model_micro_dipendenti <- feols(log(dipendenti) ~ treatment_micro * post | anno 
                                 data = dati_did_micro)
 summary(model_micro_dipendenti)
 
+write.csv(broom::tidy(model_micro_salari), "~/Desktop/model_micro_salari.csv", row.names = FALSE)
+write.csv(broom::tidy(model_micro_prod), "~/Desktop/model_micro_prod.csv", row.names = FALSE)
+write.csv(broom::tidy(model_micro_dipendenti), "~/Desktop/model_micro_dipendenti.csv", row.names = FALSE)
+
 #Event study
 # Dinamico SALARI
 model_dynamic_micro_salari <- feols(salari_per_dipendente ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
                                     data = dati_did_micro)
 summary(model_dynamic_micro_salari)
+
+write.csv(broom::tidy(model_dynamic_micro_salari), "~/Desktop/model_dyn_micro_salari.csv", row.names = FALSE)
 # Dinamico PRODUTTIVITÀ
 model_dynamic_micro_prod <- feols(produttività ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
                                   data = dati_did_micro)
 summary(model_dynamic_micro_prod)
-
+write.csv(broom::tidy(model_dynamic_micro_prod), "~/Desktop/model_dyn_micro_prod.csv", row.names = FALSE)
 # Dinamico DIPENDENTI
 model_dynamic_micro_dip <- feols(log(dipendenti) ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
                                  data = dati_did_micro)
 summary(model_dynamic_micro_dip)
-
+write.csv(broom::tidy(model_dynamic_micro_dip), "~/Desktop/model_dyn_micro_dip.csv", row.names = FALSE)
 
 # Placebo con data fittizia 2019
 dati_placebo_micro <- dati_did_micro %>%
@@ -305,14 +350,17 @@ dati_placebo_micro <- dati_did_micro %>%
 model_placebo_micro_salari <- feols(salari_per_dipendente ~ treatment_micro * post_placebo | anno + x1, 
                                     data = dati_placebo_micro)
 summary(model_placebo_micro_salari)
+write.csv(broom::tidy(model_dynamic_micro_dip), "~/Desktop/model_dyn_micro_dip.csv", row.names = FALSE)
 
 model_placebo_micro_prod <- feols(produttività ~ treatment_micro * post_placebo | anno + x1, 
                                   data = dati_placebo_micro)
 summary(model_placebo_micro_prod)
+write.csv(broom::tidy(model_dynamic_micro_dip), "~/Desktop/model_dyn_micro_dip.csv", row.names = FALSE)
 
 model_placebo_micro_dip <- feols(log(dipendenti) ~ treatment_micro * post_placebo | anno + x1, 
                                  data = dati_placebo_micro)
 summary(model_placebo_micro_dip)
+write.csv(broom::tidy(model_dynamic_micro_dip), "~/Desktop/model_dyn_micro_dip.csv", row.names = FALSE)
 
 #Grafici
 # Crea trend_data_micro
@@ -458,20 +506,89 @@ model_micro_dipendenti2 <- feols(log(dipendenti) ~ treatment_micro * post | anno
                                 data = dati_did_microp)
 summary(model_micro_dipendenti2)
 
+write.csv(broom::tidy(model_micro_salari2), "~/Desktop/model_micro_salari2.csv", row.names = FALSE)
+write.csv(broom::tidy(model_micro_prod2), "~/Desktop/model_micro_prod2.csv", row.names = FALSE)
+write.csv(broom::tidy(model_micro_dipendenti2), "~/Desktop/model_micro_dip2.csv", row.names = FALSE)
+
+#grafici trend
+trend_data_microsec <- dati_did_microp %>%
+  group_by(anno, treatment_micro) %>%
+  summarise(
+    salari_medi = mean(salari_e_stipendi_eur, na.rm = TRUE),
+    prod_media = mean(produttività, na.rm = TRUE),
+    dip_medi = mean(dipendenti, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(anno = as.numeric(anno),
+         treatment_label = ifelse(treatment_micro == 1, "Cereali/Pasta/Biscotti (G. trattato)", "Pesce/Vini (G. di controllo)"))
+#salari
+ggplot(trend_data_microsec, aes(x = anno, y = salari_medi, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    x = "Anno", y = "salari medi",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+#produttività
+ggplot(trend_data_microsec, aes(x = anno, y = prod_media, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    x = "Anno", y = "produttività media",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+#dipendenti
+ggplot(trend_data_microsec, aes(x = anno, y = dip_medi, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    x = "Anno", y = "dipendenti medi",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
 #Event study
 # Dinamico SALARI
 model_dynamic_micro_salari2 <- feols(salari_per_dipendente ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
                                     data = dati_did_microp)
-summary(model_dynamic_micro_salari)
+summary(model_dynamic_micro_salari2)
+write.csv2(
+  broom::tidy(model_dynamic_micro_salari2),
+  "~/Desktop/model_dynamic_micro_salari2.csv",
+  row.names = FALSE
+)
 # Dinamico PRODUTTIVITÀ
 model_dynamic_micro_prod2 <- feols(produttività ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
                                   data = dati_did_microp)
-summary(model_dynamic_micro_prod)
+summary(model_dynamic_micro_prod2)
+write.csv2(
+  broom::tidy(model_dynamic_micro_prod2),
+  "~/Desktop/model_dynamic_micro_prod2.csv",
+  row.names = FALSE
+)
 
 # Dinamico DIPENDENTI
 model_dynamic_micro_dip2 <- feols(log(dipendenti) ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
                                  data = dati_did_microp)
-summary(model_dynamic_micro_dip)
+summary(model_dynamic_micro_dip2)
+write.csv2(
+  broom::tidy(model_dynamic_micro_dip2),
+  "~/Desktop/model_dynamic_micro_dip2.csv",
+  row.names = FALSE
+)
 
 
 # Placebo con data fittizia 2019
@@ -482,10 +599,29 @@ model_placebo_micro_salari2 <- feols(salari_per_dipendente ~ treatment_micro * p
                                     data = dati_placebo_micro2)
 summary(model_placebo_micro_salari2)
 
+write.csv2(
+  broom::tidy(model_placebo_micro_salari2),
+  "~/Desktop/model_placebo_micro_salari2.csv",
+  row.names = FALSE
+)
+
+
 model_placebo_micro_prod2 <- feols(produttività ~ treatment_micro * post_placebo | anno + x1, 
                                   data = dati_placebo_micro2)
 summary(model_placebo_micro_prod2)
 
+write.csv2(
+  broom::tidy(model_placebo_micro_prod2),
+  "~/Desktop/model_placebo_micro_prod2.csv",
+  row.names = FALSE
+)
+
 model_placebo_micro_dip2 <- feols(log(dipendenti) ~ treatment_micro * post_placebo | anno + x1, 
                                  data = dati_placebo_micro2)
 summary(model_placebo_micro_dip2)
+
+write.csv2(
+  broom::tidy(model_placebo_micro_dip2),
+  "~/Desktop/model_placebo_micro_dip2.csv",
+  row.names = FALSE
+)
