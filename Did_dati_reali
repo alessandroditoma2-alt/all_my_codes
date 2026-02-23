@@ -1,0 +1,119 @@
+# Indici in wide format
+indici <- data.frame(
+  anno = 2017:2024,
+  Deflatore = c(0.96, 0.97, 0.98, 1.00, 1.01, 1.05, 1.11, 1.13),
+  IPCA = c(1.012, 1.024, 1.030, 1.027, 1.049, 1.150, 1.212, 1.220)
+)
+
+dati_did_micro4 <- dati_did_micro4 %>%
+  mutate(anno = as.integer(anno))
+
+indici <- indici %>%
+  mutate(anno = as.integer(anno))
+
+dati_reali <- dati_did_micro4 %>%
+  left_join(indici, by = "anno")
+
+dati_reali <- dati_reali %>%
+  mutate(
+    salario_per_dipendente_reale = salari_per_dipendente / Deflatore,
+    ebitda_dip_reale = ebitda_dip / Deflatore
+  )
+
+#tabella
+dati_reali <- dati_reali %>%
+  mutate(periodo = ifelse(anno >= 2022, "Post", "Pre"),
+         gruppo = ifelse(treatment_micro == 1, "Trattati", "Controllo"))
+
+tab_descr_reale <- dati_reali %>%
+  group_by(periodo, gruppo) %>%
+  summarise(
+    N = n(),
+    salari_medi = mean(salario_per_dipendente_reale, na.rm = TRUE),
+    salari_mediana = median(salario_per_dipendente_reale, na.rm = TRUE),
+    salari_dev_standard = sd(salario_per_dipendente_reale, na.rm = TRUE),
+    ebitda_medi = mean(ebitda_dip_reale, na.rm = TRUE),
+    ebitda_mediana = median(ebitda_dip_reale, na.rm = TRUE),
+    ebitda_dev_standard = sd(ebitda_dip_reale, na.rm = TRUE),
+    .groups = "drop"
+  )
+#did reali
+#salari
+model_micro_salarir4 <- feols(log(salario_per_dipendente_reale) ~ treatment_micro * post | anno + x1, 
+                             data = dati_reali)
+summary(model_micro_salarir4)
+
+write.csv2(
+  broom::tidy(model_micro_salarir4),
+  "~/Desktop/model_micro_salarir4.csv",
+  row.names = FALSE
+)
+
+#ebitda
+model_micro_ebitdar4 <- feols(log(ebitda_dip_reale) ~ treatment_micro * post | anno + x1, 
+                              data = dati_reali)
+summary(model_micro_ebitdar4)
+
+write.csv2(
+    broom::tidy(model_micro_ebitdar4),
+    "~/Desktop/model_micro_ebitdar4.csv",
+    row.names = FALSE
+  )
+
+#event study
+#salari
+model_dynamic_micro_salari_real4 <- feols(log(salario_per_dipendente_reale) ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                     data = dati_reali)
+summary(model_dynamic_micro_salari_real4)
+
+write.csv2(
+  broom::tidy(model_dynamic_micro_salari_real4),
+  "~/Desktop/model_dynamic_micro_salari_real4.csv",
+  row.names = FALSE
+)
+
+#ebitda
+model_dynamic_micro_ebitda_real4 <- feols(log(ebitda_dip_reale) ~ i(anno, treatment_micro, ref = 2021) | anno + x1, 
+                                     data = dati_reali)
+summary(model_dynamic_micro_ebitda_real4)
+
+write.csv2(
+  broom::tidy(model_dynamic_micro_ebitda_real4),
+  "~/Desktop/model_dynamic_micro_ebitda_real4.csv",
+  row.names = FALSE
+)
+#placebo
+dati_placebo_micror4 <- dati_reali %>%
+  mutate(post_placebo = ifelse(anno >= 2019, 1, 0))
+
+#salari
+model_placebo_micro_salarir4 <- feols(log(salario_per_dipendente_reale) ~ treatment_micro * post_placebo | anno + x1, 
+                                     data = dati_placebo_micror4)
+summary(model_placebo_micro_salarir4)
+
+write.csv2(
+  broom::tidy(model_placebo_micro_salarir4),
+  "~/Desktop/model_placebo_micro_salarir4.csv",
+  row.names = FALSE
+)
+
+#ebitda
+model_placebo_micro_ebitdar4 <- feols(log(ebitda_dip_reale) ~ treatment_micro * post_placebo | anno + x1, 
+                                     data = dati_placebo_micror4)
+summary(model_placebo_micro_ebitdar4)
+
+write.csv2(
+  broom::tidy(model_placebo_micro_ebitdar4),
+  "~/Desktop/model_placebo_micro_ebitdar4.csv",
+  row.names = FALSE
+)
+
+#Test di wald per i salari reali
+wald(
+  model_dynamic_micro_salari_real4,
+  c(
+    "anno::2017:treatment_micro = 0",
+    "anno::2018:treatment_micro = 0",
+    "anno::2019:treatment_micro = 0"
+  )
+)
