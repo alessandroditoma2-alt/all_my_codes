@@ -1,0 +1,99 @@
+trend_data_micro4 <- dati_did_micro4 %>%
+  group_by(anno, treatment_micro) %>%
+  summarise(
+    prod_media = mean(produttività, na.rm = TRUE),
+    dip_medi = mean(dipendenti, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(anno = as.numeric(anno),
+         treatment_label = ifelse(treatment_micro == 1, "Cereali/Pasta/Biscotti (G. trattato)", "Pesce/Vini/Birra (G. di controllo)"))
+
+trend_data_micro4r <- dati_reali %>%
+  group_by(anno, treatment_micro) %>%
+  summarise(
+    salari_medi = mean(salario_per_dipendente_reale, na.rm = TRUE),
+    ebitda_medio = mean(ebitda_dip_reale, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(anno = as.numeric(anno),
+         treatment_label = ifelse(treatment_micro == 1, "Cereali/Pasta/Biscotti (G. trattato)", "Pesce/Vini/Birra (G. di controllo)"))
+
+# GRAFICO TREND salari
+ggplot(trend_data_micro4r, aes(x = anno, y = salari_medi, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    title = "",
+    x = "Anno", y = "Salari reali per dipendente (migliaia di €)",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+#EBITDA
+ggplot(trend_data_micro4r, aes(x = anno, y = ebitda_medio, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    title = "",
+    x = "Anno", y = "EBITDA medio per dipendente (migl. €)",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# GRAFICO TREND produttività
+ggplot(trend_data_micro4, aes(x = anno, y = prod_media, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    title = "",
+    x = "Anno", y = "Valore Aggiunto/ n. dipendenti (migl. EUR)",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Grafico trend dipendenti
+ggplot(trend_data_micro4, aes(x = anno, y = dip_medi, color = treatment_label, linetype = treatment_label)) +
+  geom_line(linewidth = 1.2) + 
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", size = 1) +
+  scale_x_continuous(breaks = seq(2017, 2024, 1)) +
+  labs(
+    title = "",
+    x = "Anno", y = "Dipendenti medi",
+    color = "Gruppo", linetype = "Gruppo",
+    subtitle = "Linea rossa = inizio conflitto (febbraio 2022)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+#grafico event study salari
+event_study_coef_salari <- broom::tidy(model_dynamic_micro_salari4) %>%
+  filter(str_detect(term, "^anno")) %>%
+  mutate(
+    anno = as.numeric(str_extract(term, "\\d{4}")),
+    ci_lower = estimate - 1.96*std.error,
+    ci_upper = estimate + 1.96*std.error
+  )
+
+ggplot(event_study_coef_salari, aes(x = anno, y = estimate)) +
+  geom_point(size = 3, color = "#0072B2") +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper),
+                width = 0.25, color = "#0072B2") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 2021, linetype = "dotted", color = "gray40") +
+  scale_x_continuous(breaks = 2017:2024) +
+  labs(
+    title = "Event study – Salari per dipendente",
+    subtitle = "Anno di riferimento: 2022 | Barre = IC 95%",
+    x = "Anno",
+    y = "Effetto stimato"
+  ) +
+  theme_minimal(base_size = 13)
