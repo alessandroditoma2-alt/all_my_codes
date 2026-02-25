@@ -1,0 +1,149 @@
+library(readxl)
+library(tidyverse)
+library(janitor)
+library(sandwich)
+library(lmtest)
+library(fixest)
+library(ggplot2)
+library(skimr)
+library(broom)
+library(stargazer)
+library(modelsummary)
+library(tidyverse)
+
+Conc_ricavi <- Conc_ricavi %>% clean_names()
+
+Conc_ricavi <- Conc_ricavi %>%
+  rename(
+    regione = sede_operativa_regione_regione,
+    chiusura_bilancio = chiusura_bilancio_ultimo_anno_disp
+  )
+
+Conc_ricavi <- Conc_ricavi %>%
+  mutate(
+    ateco_4cifre = str_sub(ateco_2007_codice, 1, 4)
+  )
+
+Conc_ricavi %>%
+  count(ateco_4cifre)
+
+library(tidyr)
+library(dplyr)
+library(stringr)
+
+cols_ricavi <- grep("^ricavi_delle_vendite_migl_eur_", names(Conc_ricavi), value = TRUE)
+
+Conc_ricavi[cols_ricavi] <- lapply(Conc_ricavi[cols_ricavi], function(x) {
+  as.numeric(gsub("[^0-9.-]", "", x))
+})
+
+aziende_long <- Conc_ricavi %>%
+  pivot_longer(
+    cols = starts_with("ricavi_delle_vendite_migl_eur_"),
+    names_to = "anno",
+    values_to = "ricavi"
+  ) %>%
+  mutate(
+    anno = stringr::str_extract(anno, "\\d{4}") %>% as.numeric(),
+    ateco4 = str_sub(ateco_2007_codice, 1, 4) 
+  ) %>%
+  filter(!is.na(ricavi))
+
+aziende_long <- aziende_long %>%
+  mutate(
+    ateco_3cifre = str_sub(ateco_2007_codice, 1, 3)
+  )
+
+settori <- aziende_long %>%
+  filter(
+    ateco_3cifre %in% c("101","105","107") |
+      ateco_4cifre %in% c("1102","1105")
+  )
+
+settori %>% count(ateco_3cifre, ateco_4cifre)
+
+hhi <- settori %>%
+  filter(ateco_4cifre %in% c("1102", "1105")
+) %>%
+  group_by(anno, ateco_4cifre) %>%
+  mutate(
+    quota = ricavi / sum(ricavi, na.rm = TRUE)
+  ) %>%
+  summarise(
+    HHI = sum(quota^2) * 10000,
+    n_imprese = n_distinct(x1),
+    .groups = "drop"
+  )
+
+hhi3 <- settori %>%
+  filter(ateco_3cifre %in% c("101", "105", "107")) %>%  # <- parentesi chiusa
+  group_by(anno, ateco_3cifre) %>%
+  mutate(
+    quota = ricavi / sum(ricavi, na.rm = TRUE)
+  ) %>%
+  summarise(
+    HHI = sum(quota^2) * 10000,
+    n_imprese = n_distinct(x1),
+    .groups = "drop"
+  )
+  
+#CR10
+cr10_1102 <- settori %>%
+  filter(ateco_4cifre == "1102") %>%
+  group_by(anno) %>%
+  arrange(desc(ricavi), .by_group = TRUE) %>%
+  mutate(tot = sum(ricavi, na.rm = TRUE)) %>%
+  slice_head(n = 10) %>%
+  summarise(
+    CR10 = sum(ricavi) / first(tot),
+    n_imprese = n_distinct(x1),
+    .groups = "drop"
+  )
+
+cr10_1105 <- settori %>%
+  filter(ateco_4cifre == "1105") %>%
+  group_by(anno) %>%
+  arrange(desc(ricavi), .by_group = TRUE) %>%
+  mutate(tot = sum(ricavi, na.rm = TRUE)) %>%
+  slice_head(n = 10) %>%
+  summarise(
+    CR10 = sum(ricavi) / first(tot),
+    n_imprese = n_distinct(x1),
+    .groups = "drop"
+  )
+
+cr10_101 <- settori %>%
+  filter(ateco_3cifre == "101") %>%
+  group_by(anno) %>%
+  arrange(desc(ricavi), .by_group = TRUE) %>%
+  mutate(tot = sum(ricavi, na.rm = TRUE)) %>%
+  slice_head(n = 10) %>%
+  summarise(
+    CR10 = sum(ricavi) / first(tot),
+    n_imprese = n_distinct(x1),
+    .groups = "drop"
+  )
+
+cr10_105 <- settori %>%
+  filter(ateco_3cifre == "105") %>%
+  group_by(anno) %>%
+  arrange(desc(ricavi), .by_group = TRUE) %>%
+  mutate(tot = sum(ricavi, na.rm = TRUE)) %>%
+  slice_head(n = 10) %>%
+  summarise(
+    CR10 = sum(ricavi) / first(tot),
+    n_imprese = n_distinct(x1),
+    .groups = "drop"
+  )
+
+cr10_107 <- settori %>%
+  filter(ateco_3cifre == "107") %>%
+  group_by(anno) %>%
+  arrange(desc(ricavi), .by_group = TRUE) %>%
+  mutate(tot = sum(ricavi, na.rm = TRUE)) %>%
+  slice_head(n = 10) %>%
+  summarise(
+    CR10 = sum(ricavi) / first(tot),
+    n_imprese = n_distinct(x1),
+    .groups = "drop"
+  )
