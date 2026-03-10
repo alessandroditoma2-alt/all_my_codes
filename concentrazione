@@ -285,3 +285,36 @@ MES2 <- settori %>%
 
 hhi <- hhi %>%
   rename(ateco = ateco_4cifre)
+
+###serie python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# dati
+data = {
+    "Anno": [2015,2016,2017,2018,2019,2020,2021,2022,2023,2024],
+    "Vino": [106.30,93.13,91.84,93.08,93.61,93.90,90.77,86.86,91.19,97.01],
+    "Birra": [3295.66,3239.19,3085.47,2494.23,2599.25,2731.35,2691.71,2599.64,2632.19,2646.87],
+    "Carne": [345.31,216.83,211.64,204.25,198.75,203.41,199.84,188.76,196.38,186.34],
+    "Lattiero_caseario": [178.93,169.88,159.60,173.71,145.88,148.03,129.55,124.61,126.78,121.05],
+    "Forno": [606.03,531.51,509.92,482.99,448.03,477.52,414.40,378.19,358.89,252.44]
+}
+
+df = pd.DataFrame(data)
+
+# impostiamo anno come indice
+df.set_index("Anno", inplace=True)
+
+# grafico
+plt.figure(figsize=(10,6))
+
+for col in df.columns:
+    plt.plot(df.index, df[col], marker='o', label=col)
+
+plt.title("Indice HHI per settore (2015-2024)")
+plt.xlabel("Anno")
+plt.ylabel("HHI")
+plt.legend()
+plt.grid(True)
+
+plt.show()
