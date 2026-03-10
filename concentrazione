@@ -147,3 +147,141 @@ cr10_107 <- settori %>%
     n_imprese = n_distinct(x1),
     .groups = "drop"
   )
+###conc. finanziaria
+Conc_patr_netto <- Conc_patr_netto %>% clean_names()
+Conc_patr_netto <- Conc_patr_netto %>%
+  rename(
+    regione = sede_operativa_regione_regione,
+    chiusura_bilancio = chiusura_bilancio_ultimo_anno_disp
+  )
+
+Conc_patr_netto <- Conc_patr_netto %>%
+  mutate(
+    ateco_4cifre = str_sub(ateco_2007_codice, 1, 4)
+  )
+
+Conc_patr_netto <- Conc_patr_netto %>%
+  mutate(
+    ateco_3cifre = str_sub(ateco_2007_codice, 1, 3)
+  )
+
+library(tidyverse)
+library(janitor)
+library(stringr)
+
+Conc_patr_netto <- Conc_patr_netto %>%
+  mutate(
+    across(
+      starts_with("totale_patrimonio_netto"),
+      ~ as.numeric(str_replace_all(., "[^0-9.-]", ""))
+    )
+  ) %>%
+  pivot_longer(
+    cols = starts_with("totale_patrimonio_netto"),
+    names_to = "anno",
+    values_to = "patr_netto"
+  ) %>%
+  mutate(
+    anno = as.numeric(str_extract(anno, "\\d{4}"))
+  )
+
+Conc_patr_netto_clean <- Conc_patr_netto %>%
+  filter(!is.na(patr_netto))
+
+Conc_patr_netto_clean <- Conc_patr_netto %>%
+  filter(!is.na(patr_netto), patr_netto > 0)
+
+library(dplyr)
+
+HHIpn <- Conc_patr_netto_clean %>%
+  filter(ateco_4cifre %in% c("1102", "1105")
+  ) %>%
+  group_by(ateco_4cifre, anno) %>%
+  mutate(share = patr_netto / sum(patr_netto)) %>%
+  summarise(HHIpn = sum(share^2), .groups = "drop")
+
+HHIpn2 <- Conc_patr_netto_clean %>%
+  filter(ateco_3cifre %in% c("101", "105", "107")) %>%
+  group_by(ateco_3cifre, anno) %>%
+  mutate(share = patr_netto / sum(patr_netto)) %>%
+  summarise(HHIpn2 = sum(share^2), .groups = "drop")
+
+#debito
+debiti <- debiti %>% clean_names()
+debiti <- debiti %>%
+  rename(
+    regione = sede_operativa_regione_regione,
+    chiusura_bilancio = chiusura_bilancio_ultimo_anno_disp
+  )
+
+debiti <- debiti %>%
+  mutate(
+    ateco_4cifre = str_sub(ateco_2007_codice, 1, 4)
+  )
+
+debiti <- debiti %>%
+  mutate(
+    ateco_3cifre = str_sub(ateco_2007_codice, 1, 3)
+  )
+
+names(debiti)
+debiti <- debiti %>%
+mutate(
+  across(
+    starts_with("totale_debiti"),
+    ~ as.numeric(str_replace_all(., "[^0-9.-]", ""))
+  )
+) %>%
+  pivot_longer(
+    cols = starts_with("totale_debiti"),
+    names_to = "anno",
+    values_to = "debiti"
+  ) %>%
+  mutate(
+    anno = as.numeric(str_extract(anno, "\\d{4}"))
+  )
+
+debiti_clean <- debiti %>%
+  filter(!is.na(debiti))
+
+HHId <- debiti_clean %>%
+  filter(ateco_4cifre %in% c("1102", "1105")
+  ) %>%
+  group_by(ateco_4cifre, anno) %>%
+  mutate(share = debiti / sum(debiti)) %>%
+  summarise(HHId = sum(share^2), .groups = "drop")
+
+HHId2 <- debiti_clean %>%
+  filter(ateco_3cifre %in% c("101", "105", "107")) %>%
+  group_by(ateco_3cifre, anno) %>%
+  mutate(share = debiti / sum(debiti)) %>%
+  summarise(HHId2 = sum(share^2), .groups = "drop")
+### conc tecnica
+library(dplyr)
+
+MES <- settori %>%
+  filter(ateco_3cifre %in% c(101, 105, 107)) %>%   
+  group_by(anno, ateco_3cifre) %>%
+  arrange(desc(ricavi), .by_group = TRUE) %>%
+  mutate(rank = row_number()) %>%
+  summarise(
+    fatt_tot = sum(ricavi, na.rm = TRUE),
+    top3 = mean(ricavi[rank <= 3], na.rm = TRUE),
+    MES = top3 / fatt_tot,
+    .groups = "drop"
+  )
+
+MES2 <- settori %>%
+  filter(ateco_4cifre %in% c(1102, 1105)) %>%   
+  group_by(anno, ateco_4cifre) %>%
+  arrange(desc(ricavi), .by_group = TRUE) %>%
+  mutate(rank = row_number()) %>%
+  summarise(
+    fatt_tot = sum(ricavi, na.rm = TRUE),
+    top3 = mean(ricavi[rank <= 3], na.rm = TRUE),
+    MES = top3 / fatt_tot,
+    .groups = "drop"
+  )
+
+hhi <- hhi %>%
+  rename(ateco = ateco_4cifre)
